@@ -19,6 +19,7 @@ import static java.util.Objects.requireNonNull;
 
 import io.delta.kernel.expressions.Predicate;
 import io.delta.kernel.internal.SnapshotImpl;
+import io.delta.kernel.spark.utils.SchemaUtils;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.Set;
@@ -63,6 +64,12 @@ public class SparkScanBuilder implements ScanBuilder, SupportsPushDownRequiredCo
             .map(f -> f.name().toLowerCase(Locale.ROOT))
             .collect(Collectors.toSet());
     this.pushedPredicates = new Predicate[0];
+
+    // Validate schema for unsupported data types
+    // Determine if this is file path access vs catalog access
+    boolean isFilePathAccess = isFilePathAccess(tableName, tablePath);
+    SchemaUtils.validateSchemaForKernelSpark(dataSchema, isFilePathAccess);
+    SchemaUtils.validateSchemaForKernelSpark(partitionSchema, isFilePathAccess);
   }
 
   @Override
@@ -99,5 +106,47 @@ public class SparkScanBuilder implements ScanBuilder, SupportsPushDownRequiredCo
 
   StructType getPartitionSchema() {
     return partitionSchema;
+  }
+
+  /**
+   * Determines whether this is file path access (true) or catalog access (false).
+   * 
+   * We consider it file path access if:
+   * - tableName is null, empty, or looks like a file path
+   * - tableName equals tablePath (indicating direct file path usage)
+   * 
+   * We consider it catalog access if:
+   * - tableName is a valid identifier that doesn't look like a path
+   */
+  private boolean isFilePathAccess(String tableName, String tablePath) {
+    if (tableName == null || tableName.trim().isEmpty()) {
+      return true;
+    }
+
+    // If tableName looks like a file path (contains path separators), it's file path access
+    if (tableName.contains("/") || tableName.contains("\\")) {
+      return true;
+    }
+
+    // If tableName equals tablePath, it's likely file path access
+    if (tableName.equals(tablePath)) {
+      return true;
+    }
+
+    // If tableName starts with common file system schemes, it's file path access
+    String lowerTableName = tableName.toLowerCase();
+    if (lowerTableName.startsWith("file:") || 
+        lowerTableName.startsWith("hdfs:") || 
+        lowerTableName.startsWith("s3:") || 
+        lowerTableName.startsWith("s3a:") || 
+        lowerTableName.startsWith("s3n:") || 
+        lowerTableName.startsWith("gs:") || 
+        lowerTableName.startsWith("abfs:") || 
+        lowerTableName.startsWith("adls:")) {
+      return true;
+    }
+
+    // Otherwise, assume it's catalog access (tableName is a proper table identifier)
+    return false;
   }
 }
