@@ -198,14 +198,13 @@ public class SchemaUtils {
 
   /**
    * Validates that a Spark schema does not contain unsupported data types for kernel-spark.
-   * Currently unsupported types:
-   * - Variant
-   * - String with non-default collation
-   * - Time (upcoming in Spark 4.1)
+   * Currently unsupported types: - Variant - String with non-default collation - Time (upcoming in
+   * Spark 4.1)
    *
    * @param schema The Spark schema to validate
    * @param isFilePathAccess Whether this is file path access (true) or catalog access (false)
-   * @throws UnsupportedDataTypeException if unsupported types are found and isFilePathAccess is true
+   * @throws UnsupportedDataTypeException if unsupported types are found and isFilePathAccess is
+   *     true
    */
   public static void validateSchemaForKernelSpark(
       org.apache.spark.sql.types.StructType schema, boolean isFilePathAccess) {
@@ -217,59 +216,57 @@ public class SchemaUtils {
     validateDataTypeForKernelSpark(schema, "root", isFilePathAccess);
   }
 
-  /**
+  /** 
    * Recursively validates that a Spark data type does not contain unsupported types.
+   * Follows the same if-else instanceof pattern as convertKernelDataTypeToSparkDataType for consistency.
    */
   private static void validateDataTypeForKernelSpark(
       org.apache.spark.sql.types.DataType dataType, String fieldPath, boolean isFilePathAccess) {
-    
+
     if (!isFilePathAccess) {
       return;
     }
 
-    // Check for Variant type
-    if (isVariantType(dataType)) {
+    // Check for unsupported types using the same pattern as convertKernelDataTypeToSparkDataType
+    if (isUnsupportedVariantType(dataType)) {
       throw new UnsupportedDataTypeException(
-          "Variant data type is not supported by the kernel-spark connector. " +
-          "Found Variant type at field: " + fieldPath + ". " +
-          "Please use a different data type or access the table through a catalog.");
-    }
-
-    // Check for String with non-default collation
-    if (dataType instanceof org.apache.spark.sql.types.StringType) {
-      org.apache.spark.sql.types.StringType stringType = 
+          "Variant data type is not supported by the kernel-spark connector. "
+              + "Found Variant type at field: "
+              + fieldPath
+              + ". "
+              + "Please use a different data type or access the table through a catalog.");
+    } else if (dataType instanceof org.apache.spark.sql.types.StringType) {
+      org.apache.spark.sql.types.StringType stringType =
           (org.apache.spark.sql.types.StringType) dataType;
       if (hasNonDefaultCollation(stringType)) {
         throw new UnsupportedDataTypeException(
-            "String with non-default collation is not supported by the kernel-spark connector. " +
-            "Found String with collation at field: " + fieldPath + ". " +
-            "Please use default collation or access the table through a catalog.");
+            "String with non-default collation is not supported by the kernel-spark connector. "
+                + "Found String with collation at field: "
+                + fieldPath
+                + ". "
+                + "Please use default collation or access the table through a catalog.");
       }
-    }
-
-    // Check for Time type (when it becomes available in Spark 4.1)
-    if (isTimeType(dataType)) {
+    } else if (isUnsupportedTimeType(dataType)) {
       throw new UnsupportedDataTypeException(
-          "Time data type is not supported by the kernel-spark connector. " +
-          "Found Time type at field: " + fieldPath + ". " +
-          "Please use a different data type or access the table through a catalog.");
+          "Time data type is not supported by the kernel-spark connector. "
+              + "Found Time type at field: "
+              + fieldPath
+              + ". "
+              + "Please use a different data type or access the table through a catalog.");
     }
 
     // Recursively check complex types
     if (dataType instanceof org.apache.spark.sql.types.ArrayType) {
-      org.apache.spark.sql.types.ArrayType arrayType = 
+      org.apache.spark.sql.types.ArrayType arrayType =
           (org.apache.spark.sql.types.ArrayType) dataType;
       validateDataTypeForKernelSpark(
           arrayType.elementType(), fieldPath + ".element", isFilePathAccess);
     } else if (dataType instanceof org.apache.spark.sql.types.MapType) {
-      org.apache.spark.sql.types.MapType mapType = 
-          (org.apache.spark.sql.types.MapType) dataType;
-      validateDataTypeForKernelSpark(
-          mapType.keyType(), fieldPath + ".key", isFilePathAccess);
-      validateDataTypeForKernelSpark(
-          mapType.valueType(), fieldPath + ".value", isFilePathAccess);
+      org.apache.spark.sql.types.MapType mapType = (org.apache.spark.sql.types.MapType) dataType;
+      validateDataTypeForKernelSpark(mapType.keyType(), fieldPath + ".key", isFilePathAccess);
+      validateDataTypeForKernelSpark(mapType.valueType(), fieldPath + ".value", isFilePathAccess);
     } else if (dataType instanceof org.apache.spark.sql.types.StructType) {
-      org.apache.spark.sql.types.StructType structType = 
+      org.apache.spark.sql.types.StructType structType =
           (org.apache.spark.sql.types.StructType) dataType;
       for (org.apache.spark.sql.types.StructField field : structType.fields()) {
         validateDataTypeForKernelSpark(
@@ -279,29 +276,47 @@ public class SchemaUtils {
   }
 
   /**
-   * Checks if a data type is a Variant type.
-   * Uses reflection to be compatible with different Spark versions.
+   * Checks if a data type is an unsupported Variant type.
+   * Uses Java's built-in type checking with reflection to be compatible with different Spark versions.
+   * Follows the same pattern as the type checking in convertKernelDataTypeToSparkDataType.
    */
-  private static boolean isVariantType(org.apache.spark.sql.types.DataType dataType) {
-    // Check if this is a Variant type by examining the class name
-    // This approach works across different Spark versions
-    String className = dataType.getClass().getSimpleName();
-    return className.equals("VariantType") || className.contains("Variant");
+  private static boolean isUnsupportedVariantType(org.apache.spark.sql.types.DataType dataType) {
+    // List of known Variant type class names across Spark versions
+    String[] variantClassNames = {
+        "org.apache.spark.sql.types.VariantType",
+        "org.apache.spark.sql.catalyst.types.VariantType"
+    };
+    
+    // Use Java's isInstance() method for robust type checking
+    return isInstanceOfAnyClass(dataType, variantClassNames);
   }
 
   /**
-   * Checks if a StringType has non-default collation.
-   * Uses reflection to be compatible with different Spark versions.
+   * Checks if a StringType has non-default collation. Uses reflection to be compatible with
+   * different Spark versions.
    */
   private static boolean hasNonDefaultCollation(org.apache.spark.sql.types.StringType stringType) {
     try {
-      // In newer Spark versions, StringType may have collation information
-      // For now, we assume default collation unless we can detect otherwise
-      java.lang.reflect.Method getCollationMethod = 
-          stringType.getClass().getMethod("collationId");
-      Object collationId = getCollationMethod.invoke(stringType);
-      // Default collation typically has ID 0
-      return !collationId.equals(0);
+      // Try multiple possible method names for collation ID across Spark versions
+      String[] methodNames = {"collationId", "getCollationId", "collation"};
+      for (String methodName : methodNames) {
+        try {
+          java.lang.reflect.Method method = stringType.getClass().getMethod(methodName);
+          Object result = method.invoke(stringType);
+          
+          // Handle different return types
+          if (result instanceof Integer) {
+            return !result.equals(0); // Default collation typically has ID 0
+          } else if (result instanceof String) {
+            return !result.equals("UTF8_BINARY") && !result.equals(""); // Default collation names
+          }
+        } catch (NoSuchMethodException ignored) {
+          // Try next method name
+        }
+      }
+      
+      // If no collation methods found, assume default collation
+      return false;
     } catch (Exception e) {
       // If we can't determine collation (older Spark versions), assume default
       return false;
@@ -309,18 +324,42 @@ public class SchemaUtils {
   }
 
   /**
-   * Checks if a data type is a Time type.
-   * Uses reflection to be compatible with different Spark versions.
+   * Checks if a data type is an unsupported Time type.
+   * Uses Java's built-in type checking with reflection to be compatible with different Spark versions.
+   * Follows the same pattern as the type checking in convertKernelDataTypeToSparkDataType.
    */
-  private static boolean isTimeType(org.apache.spark.sql.types.DataType dataType) {
-    // Check if this is a Time type by examining the class name
-    String className = dataType.getClass().getSimpleName();
-    return className.equals("TimeType") || className.contains("Time");
+  private static boolean isUnsupportedTimeType(org.apache.spark.sql.types.DataType dataType) {
+    // List of known Time type class names across Spark versions
+    String[] timeClassNames = {
+        "org.apache.spark.sql.types.TimeType",
+        "org.apache.spark.sql.catalyst.types.TimeType"
+    };
+    
+    // Use Java's isInstance() method for robust type checking
+    return isInstanceOfAnyClass(dataType, timeClassNames);
   }
 
   /**
-   * Exception thrown when unsupported data types are encountered.
+   * Helper method to check if an object is an instance of any of the given class names.
+   * Uses Java's built-in Class.isInstance() method for robust type checking.
+   * This allows us to check for types that may not be available at compile time.
    */
+  private static boolean isInstanceOfAnyClass(Object obj, String[] classNames) {
+    for (String className : classNames) {
+      try {
+        Class<?> clazz = Class.forName(className);
+        if (clazz.isInstance(obj)) {
+          return true;
+        }
+      } catch (ClassNotFoundException e) {
+        // Class not available in this Spark version, try next one
+        continue;
+      }
+    }
+    return false;
+  }
+
+  /** Exception thrown when unsupported data types are encountered. */
   public static class UnsupportedDataTypeException extends RuntimeException {
     public UnsupportedDataTypeException(String message) {
       super(message);

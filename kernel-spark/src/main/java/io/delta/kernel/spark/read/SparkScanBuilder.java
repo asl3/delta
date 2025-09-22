@@ -110,13 +110,12 @@ public class SparkScanBuilder implements ScanBuilder, SupportsPushDownRequiredCo
 
   /**
    * Determines whether this is file path access (true) or catalog access (false).
-   * 
-   * We consider it file path access if:
-   * - tableName is null, empty, or looks like a file path
-   * - tableName equals tablePath (indicating direct file path usage)
-   * 
-   * We consider it catalog access if:
-   * - tableName is a valid identifier that doesn't look like a path
+   *
+   * <p>We consider it file path access if: - tableName is null, empty, or looks like a file path -
+   * tableName equals tablePath (indicating direct file path usage)
+   *
+   * <p>We consider it catalog access if: - tableName is a valid identifier that doesn't look like a
+   * path
    */
   private boolean isFilePathAccess(String tableName, String tablePath) {
     if (tableName == null || tableName.trim().isEmpty()) {
@@ -135,14 +134,14 @@ public class SparkScanBuilder implements ScanBuilder, SupportsPushDownRequiredCo
 
     // If tableName starts with common file system schemes, it's file path access
     String lowerTableName = tableName.toLowerCase();
-    if (lowerTableName.startsWith("file:") || 
-        lowerTableName.startsWith("hdfs:") || 
-        lowerTableName.startsWith("s3:") || 
-        lowerTableName.startsWith("s3a:") || 
-        lowerTableName.startsWith("s3n:") || 
-        lowerTableName.startsWith("gs:") || 
-        lowerTableName.startsWith("abfs:") || 
-        lowerTableName.startsWith("adls:")) {
+    if (lowerTableName.startsWith("file:")
+        || lowerTableName.startsWith("hdfs:")
+        || lowerTableName.startsWith("s3:")
+        || lowerTableName.startsWith("s3a:")
+        || lowerTableName.startsWith("s3n:")
+        || lowerTableName.startsWith("gs:")
+        || lowerTableName.startsWith("abfs:")
+        || lowerTableName.startsWith("adls:")) {
       return true;
     }
 
