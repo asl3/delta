@@ -865,6 +865,31 @@ class GoldenTables extends QueryTest with SharedSparkSession {
     writeDataWithSchema(tablePath, data, schema)
   }
 
+  /** TEST: DeltaDataReaderSuite > read - variant */
+  generateGoldenTable("data-reader-variant") { tablePath =>
+    // import org.apache.spark.sql.types.VariantType
+    
+    def createRow(i: Int): Row = {
+      Row(
+        i,
+        // s"""{"number": $i, "text": "value_$i"}""", // JSON string for variant
+        // s"""[$i, "${i * 2}", ${i % 2 == 0}]""", // JSON array for variant
+        // if (i % 3 == 0) s"""{"nested": {"value": $i}}""" else s"""$i""", // Mixed types
+        // s"""{"id": $i, "data": [1, 2, 3], "meta": {"type": "test"}}""" // Complex JSON
+      )
+    }
+
+    val schema = new StructType()
+      .add("i", IntegerType)
+      // .add("variant_object", VariantType)
+      // .add("variant_array", VariantType)
+      // .add("variant_mixed", VariantType)
+      // .add("variant_complex", VariantType)
+
+    val data = (0 until 10).map(createRow)
+    writeDataWithSchema(tablePath, data, schema)
+  }
+
   /** TEST: DeltaDataReaderSuite > read - nested struct */
   generateGoldenTable("data-reader-nested-struct") { tablePath =>
     def createRow(i: Int): Row = Row(Row(i.toString, i.toString, Row(i, i.toLong)), i)

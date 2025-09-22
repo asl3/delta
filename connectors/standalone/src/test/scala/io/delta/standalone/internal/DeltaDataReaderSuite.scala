@@ -223,6 +223,28 @@ class DeltaDataReaderSuite extends FunSuite {
     }
   }
 
+  test("read - variant") {
+    withLogForGoldenTable("data-reader-variant") { log =>
+      val recordIter = log.snapshot().open()
+      var count = 0
+      while (recordIter.hasNext) {
+        val row = recordIter.next()
+        val i = row.getInt("i")
+        
+        // Test variant object column
+        val variantObject = row.getString("variant_object")
+        assert(variantObject != null)
+        // Verify it contains the expected JSON structure
+        assert(variantObject.contains(s""""number":$i"""))
+        assert(variantObject.contains(s""""text":"value_$i""""))
+        
+        count += 1
+      }
+
+      assert(count == 10)
+    }
+  }
+
   test("read - nested struct") {
     withLogForGoldenTable("data-reader-nested-struct") { log =>
       val recordIter = log.snapshot().open()
