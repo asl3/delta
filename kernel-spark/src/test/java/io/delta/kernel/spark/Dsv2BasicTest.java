@@ -25,7 +25,6 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.streaming.StreamingQuery;
 import org.apache.spark.sql.streaming.StreamingQueryException;
-import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
@@ -135,120 +134,6 @@ public class Dsv2BasicTest {
             RowFactory.create("value", "double", null));
 
     assertDatasetEquals(actual, expectedRows);
-  }
-
-  @Test
-  public void testVariantTypeValidationWithGoldenTable() {
-    // This test uses a golden table that was created with Variant data type
-    // to simulate the real-world scenario where someone creates a table with
-    // a newer Spark version that supports Variant, and then we try to read it
-
-    try {
-      // Try to access the golden table that contains Variant data via file path
-      // This should trigger our UnsupportedDataTypeException validation
-      String goldenTablePath = "/path/to/golden/table/kernel-spark-variant-validation";
-
-      // Note: In a real implementation, this DESCRIBE would go through our kernel-spark
-      // connector and trigger the validation. For now, we're testing the table structure.
-      Dataset<Row> actual =
-          spark.sql(String.format("DESCRIBE TABLE dsv2.delta.`%s`", goldenTablePath));
-
-      // Check if the table has the expected columns
-      List<Row> actualRows = actual.collectAsList();
-      boolean hasIdColumn = actualRows.stream().anyMatch(row -> "id".equals(row.getString(0)));
-      assertTrue(hasIdColumn, "Golden table should have id column");
-
-      // Check if variant column exists (depends on Spark version used to create golden table)
-      boolean hasVariantColumn =
-          actualRows.stream().anyMatch(row -> "variant_data".equals(row.getString(0)));
-      if (hasVariantColumn) {
-        System.out.println(
-            "Golden table contains Variant column - validation would be triggered for file path access");
-      } else {
-        System.out.println(
-            "Golden table created without Variant column - VariantType not available during creation");
-      }
-
-    } catch (Exception e) {
-      // Golden table might not exist or not be accessible
-      System.out.println("Golden table test skipped - table not available: " + e.getMessage());
-    }
-  }
-
-  @Test
-  public void testVariantTypeValidationFramework() {
-    // Test our validation framework directly using reflection to create a mock Variant type
-    // This tests our UnsupportedDataTypeException detection logic
-
-    try {
-      // Create a mock DataType that would be detected as Variant by our validation
-      DataType mockVariantType =
-          new DataType() {
-            @Override
-            public String typeName() {
-              return "variant";
-            }
-
-            @Override
-            public String sql() {
-              return "VARIANT";
-            }
-
-            @Override
-            public String simpleString() {
-              return "variant";
-            }
-
-            @Override
-            public String catalogString() {
-              return "variant";
-            }
-
-            @Override
-            public Class<?> getClass() {
-              // Return a class name that matches our Variant detection logic
-              return TestVariantType.class;
-            }
-          };
-
-      StructType schemaWithMockVariant =
-          DataTypes.createStructType(
-              Arrays.asList(
-                  DataTypes.createStructField("id", DataTypes.IntegerType, false),
-                  DataTypes.createStructField("variant_col", mockVariantType, true)));
-
-      // This tests that our validation framework would catch this type
-      // Note: We can't easily test the actual SparkScanBuilder validation here
-      // since it requires a complex setup, but this validates our detection logic
-      System.out.println("Mock Variant type created for validation framework testing");
-      System.out.println("Schema: " + schemaWithMockVariant);
-
-    } catch (Exception e) {
-      System.out.println("Validation framework test failed: " + e.getMessage());
-    }
-  }
-
-  // Mock class for testing Variant detection
-  private static class TestVariantType extends DataType {
-    @Override
-    public String typeName() {
-      return "variant";
-    }
-
-    @Override
-    public String sql() {
-      return "VARIANT";
-    }
-
-    @Override
-    public String simpleString() {
-      return "variant";
-    }
-
-    @Override
-    public String catalogString() {
-      return "variant";
-    }
   }
 
   @Test
