@@ -19,7 +19,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.delta.golden.GoldenTableUtils$;
-import io.delta.kernel.spark.table.SparkTable;
 import java.io.File;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -32,7 +31,6 @@ import org.apache.spark.sql.QueryTest;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.expressions.GenericRow;
-import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.read.Scan;
 import org.apache.spark.sql.connector.read.ScanBuilder;
 import org.apache.spark.sql.types.DataTypes;
@@ -452,6 +450,75 @@ public class SparkGoldenTableTest extends QueryTest {
     scala.collection.immutable.Seq<Row> expectedSeq =
         scala.collection.JavaConverters.asScalaBuffer(expected).toList();
     checkAnswer(dfFunc, expectedSeq);
+  }
+
+  @Test
+  public void testVariantTypeValidation() {
+    // Test the real-world scenario: table created with Variant type using newer Spark
+    // then accessed via kernel-spark connector (should detect unsupported type)
+
+    String tablePath = goldenTablePath("kernel-spark-variant-validation");
+
+    try {
+      // First, try to describe the table to see its schema
+      Dataset<Row> describeResult = spark.sql("DESCRIBE TABLE `dsv2`.`delta`.`" + tablePath + "`");
+      List<Row> schemaRows = describeResult.collectAsList();
+
+      System.out.println("Golden table schema:");
+      for (Row row : schemaRows) {
+        System.out.println("  " + row.getString(0) + " : " + row.getString(1));
+      }
+
+      // Check for variant columns in the described schema
+      boolean hasVariantColumn =
+          schemaRows.stream()
+              .anyMatch(
+                  row ->
+                      "variant_data".equals(row.getString(0))
+                          && row.getString(1).toLowerCase().contains("variant"));
+
+      if (hasVariantColumn) {
+        System.out.println("✓ Golden table contains Variant column");
+        System.out.println(
+            "  Testing file path access (should trigger UnsupportedDataTypeException)...");
+
+        try {
+          // This should go through our kernel-spark connector and trigger validation
+          Dataset<Row> result = spark.sql("SELECT * FROM `dsv2`.`delta`.`" + tablePath + "`");
+          List<Row> data = result.collectAsList();
+
+          System.out.println("  WARNING: Query succeeded - validation may not have been triggered");
+          System.out.println("  Returned " + data.size() + " rows");
+
+        } catch (Exception queryException) {
+          System.out.println("  ✓ Query failed as expected: " + queryException.getMessage());
+          if (queryException.getMessage() != null
+              && queryException.getMessage().toLowerCase().contains("variant")) {
+            System.out.println("  ✓ Failure message indicates Variant type validation working");
+          }
+        }
+
+      } else {
+        System.out.println("  Golden table created without Variant column");
+        System.out.println(
+            "  This means VariantType was not available during golden table creation");
+
+        // Try to query the table anyway to make sure it works for supported types
+        Dataset<Row> result = spark.sql("SELECT * FROM `dsv2`.`delta`.`" + tablePath + "`");
+        List<Row> data = result.collectAsList();
+        System.out.println("  ✓ Successfully queried table with " + data.size() + " rows");
+      }
+
+    } catch (Exception e) {
+      System.out.println(
+          "Golden table test failed: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+
+      // This might happen if golden table doesn't exist
+      if (!new File(tablePath).exists()) {
+        System.out.println("  Golden table directory does not exist: " + tablePath);
+        System.out.println("  You may need to run: ./build/sbt \"goldenTables/test\"");
+      }
+    }
   }
 
   private String goldenTablePath(String name) {

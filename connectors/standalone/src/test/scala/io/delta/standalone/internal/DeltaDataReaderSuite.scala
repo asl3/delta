@@ -225,18 +225,26 @@ class DeltaDataReaderSuite extends FunSuite {
 
   test("read - variant") {
     withLogForGoldenTable("data-reader-variant") { log =>
+      assert(false)
       val recordIter = log.snapshot().open()
       var count = 0
       while (recordIter.hasNext) {
         val row = recordIter.next()
         val i = row.getInt("i")
-        
-        // Test variant object column
+
         val variantObject = row.getString("variant_object")
+
         assert(variantObject != null)
         // Verify it contains the expected JSON structure
         assert(variantObject.contains(s""""number":$i"""))
         assert(variantObject.contains(s""""text":"value_$i""""))
+        
+        // // Test variant object column
+        // val variantObject = row.getString("variant_object")
+        // assert(variantObject != null)
+        // // Verify it contains the expected JSON structure
+        // assert(variantObject.contains(s""""number":$i"""))
+        // assert(variantObject.contains(s""""text":"value_$i""""))
         
         count += 1
       }

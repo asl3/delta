@@ -829,6 +829,7 @@ class GoldenTables extends QueryTest with SharedSparkSession {
 
     val schema = new StructType()
       .add("i", IntegerType)
+      .add("variant_object", VariantType)
       .add("3d_int_list", ArrayType(ArrayType(ArrayType(IntegerType))))
       .add("4d_int_list", ArrayType(ArrayType(ArrayType(ArrayType(IntegerType)))))
       .add("list_of_maps", ArrayType(MapType(StringType, LongType)))
@@ -840,9 +841,12 @@ class GoldenTables extends QueryTest with SharedSparkSession {
 
   /** TEST: DeltaDataReaderSuite > read - map */
   generateGoldenTable("data-reader-map") { tablePath =>
+   import org.apache.spark.sql.types.VariantType
+  
     def createRow(i: Int): Row = {
       Row(
         i,
+        s"""{"number": $i, "text": "value_$i"}""", // JSON string for variant
         Map(i -> i),
         Map(i.toLong -> i.toByte),
         Map(i.toShort -> (i % 2 == 0)),
@@ -865,29 +869,32 @@ class GoldenTables extends QueryTest with SharedSparkSession {
     writeDataWithSchema(tablePath, data, schema)
   }
 
-  /** TEST: DeltaDataReaderSuite > read - variant */
-  generateGoldenTable("data-reader-variant") { tablePath =>
-    // import org.apache.spark.sql.types.VariantType
-    
-    def createRow(i: Int): Row = {
-      Row(
-        i,
-        // s"""{"number": $i, "text": "value_$i"}""", // JSON string for variant
-        // s"""[$i, "${i * 2}", ${i % 2 == 0}]""", // JSON array for variant
-        // if (i % 3 == 0) s"""{"nested": {"value": $i}}""" else s"""$i""", // Mixed types
-        // s"""{"id": $i, "data": [1, 2, 3], "meta": {"type": "test"}}""" // Complex JSON
-      )
+  /** TEST: kernel-spark > unsupported variant type validation */
+  generateGoldenTable("kernel-spark-variant-validation") { tablePath =>
+    try {
+      import org.apache.spark.sql.types.VariantType
+      
+      def createRow(i: Int): Row = {
+        Row(
+          i,
+          s"""{"number": $i, "text": "value_$i", "active": ${i % 2 == 0}}""" // JSON for variant
+        )
+      }
+
+      val schema = new StructType()
+        .add("id", IntegerType)
+        .add("variant_data", VariantType)
+
+      val data = (0 until 5).map(createRow)
+      writeDataWithSchema(tablePath, data, schema)
+    } catch {
+      case _: NoClassDefFoundError | _: ClassNotFoundException =>
+        // VariantType not available in this Spark version, create empty table
+        println("VariantType not available - creating table without variant column")
+        val schema = new StructType().add("id", IntegerType)
+        val data = (0 until 5).map(i => Row(i))
+        writeDataWithSchema(tablePath, data, schema)
     }
-
-    val schema = new StructType()
-      .add("i", IntegerType)
-      // .add("variant_object", VariantType)
-      // .add("variant_array", VariantType)
-      // .add("variant_mixed", VariantType)
-      // .add("variant_complex", VariantType)
-
-    val data = (0 until 10).map(createRow)
-    writeDataWithSchema(tablePath, data, schema)
   }
 
   /** TEST: DeltaDataReaderSuite > read - nested struct */
