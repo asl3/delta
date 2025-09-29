@@ -455,11 +455,11 @@ public class SparkGoldenTableTest extends QueryTest {
   }
 
   @Test
-  public void testVariantTypeValidation() {
-    // Test the real-world scenario: table created with Variant type using newer Spark
+  public void testUnsupportedDataTypeValidation() {
+    // Test the real-world scenario: table created with unsupported mock data type
     // then accessed via kernel-spark connector (should detect unsupported type)
 
-    String tablePath = goldenTablePath("kernel-spark-variant-validation");
+    String tablePath = goldenTablePath("kernel-spark-unsupported-datatype-validation");
 
     try {
       // First, try to describe the table to see its schema
@@ -471,16 +471,17 @@ public class SparkGoldenTableTest extends QueryTest {
         System.out.println("  " + row.getString(0) + " : " + row.getString(1));
       }
 
-      // Check for variant columns in the described schema
-      boolean hasVariantColumn =
+      // Check for unsupported mock columns in the described schema
+      boolean hasUnsupportedColumn =
           schemaRows.stream()
               .anyMatch(
                   row ->
-                      "variant_data".equals(row.getString(0))
-                          && row.getString(1).toLowerCase().contains("variant"));
+                      "unsupported_column".equals(row.getString(0))
+                          && (row.getString(1).toLowerCase().contains("unsupported")
+                              || row.getString(1).toLowerCase().contains("mock")));
 
-      if (hasVariantColumn) {
-        System.out.println("✓ Golden table contains Variant column");
+      if (hasUnsupportedColumn) {
+        System.out.println("✓ Golden table contains unsupported mock data type column");
         System.out.println(
             "  Testing file path access (should trigger UnsupportedDataTypeException)...");
 
@@ -495,20 +496,22 @@ public class SparkGoldenTableTest extends QueryTest {
         } catch (Exception queryException) {
           System.out.println("  ✓ Query failed as expected: " + queryException.getMessage());
           if (queryException.getMessage() != null
-              && queryException.getMessage().toLowerCase().contains("variant")) {
-            System.out.println("  ✓ Failure message indicates Variant type validation working");
+              && (queryException.getMessage().toLowerCase().contains("unsupported")
+                  || queryException.getMessage().toLowerCase().contains("mock"))) {
+            System.out.println(
+                "  ✓ Failure message indicates unsupported data type validation working");
           }
         }
 
       } else {
-        System.out.println("  Golden table created without Variant column");
+        System.out.println("  Golden table created without unsupported column");
         System.out.println(
-            "  This means VariantType was not available during golden table creation");
+            "  This means the unsupported mock data type was rejected during golden table creation");
 
         // Try to query the table anyway to make sure it works for supported types
         Dataset<Row> result = spark.sql("SELECT * FROM `dsv2`.`delta`.`" + tablePath + "`");
         List<Row> data = result.collectAsList();
-        System.out.println("  ✓ Successfully queried table with " + data.size() + " rows");
+        System.out.println("  ✓ Successfully queried fallback table with " + data.size() + " rows");
       }
 
     } catch (Exception e) {

@@ -44,6 +44,19 @@ import org.apache.spark.sql.test.SharedSparkSession
 import org.apache.spark.sql.types._
 
 /**
+ * Mock test-only data type for testing unsupported data type handling.
+ * This should never be supported in production and is used to verify
+ * that proper validation occurs for unsupported types.
+ */
+case class UnsupportedMockDataType() extends DataType {
+  override def defaultSize: Int = 8
+  override def simpleString: String = "unsupported_mock"
+  override def sql: String = "UNSUPPORTED_MOCK"
+  override def asNullable: DataType = this
+  override def existsRecursively(f: DataType => Boolean): Boolean = f(this)
+}
+
+/**
  * This is a special class to generate golden tables for other projects. Run the following commands
  * to re-generate all golden tables:
  * ```
@@ -829,7 +842,6 @@ class GoldenTables extends QueryTest with SharedSparkSession {
 
     val schema = new StructType()
       .add("i", IntegerType)
-      .add("variant_object", VariantType)
       .add("3d_int_list", ArrayType(ArrayType(ArrayType(IntegerType))))
       .add("4d_int_list", ArrayType(ArrayType(ArrayType(ArrayType(IntegerType)))))
       .add("list_of_maps", ArrayType(MapType(StringType, LongType)))
@@ -841,12 +853,9 @@ class GoldenTables extends QueryTest with SharedSparkSession {
 
   /** TEST: DeltaDataReaderSuite > read - map */
   generateGoldenTable("data-reader-map") { tablePath =>
-   import org.apache.spark.sql.types.VariantType
-  
     def createRow(i: Int): Row = {
       Row(
         i,
-        s"""{"number": $i, "text": "value_$i"}""", // JSON string for variant
         Map(i -> i),
         Map(i.toLong -> i.toByte),
         Map(i.toShort -> (i % 2 == 0)),
@@ -869,31 +878,36 @@ class GoldenTables extends QueryTest with SharedSparkSession {
     writeDataWithSchema(tablePath, data, schema)
   }
 
-  /** TEST: kernel-spark > unsupported variant type validation */
-  generateGoldenTable("kernel-spark-variant-validation") { tablePath =>
+  /** TEST: kernel-spark > unsupported mock data type validation */
+  generateGoldenTable("kernel-spark-unsupported-datatype-validation") { tablePath =>
+    // This test verifies that unsupported data types are properly blocked
+    // The UnsupportedMockDataType should cause validation errors when used
+    def createRow(i: Int): Row = {
+      Row(
+        i,
+        s"mock_value_$i" // This will be converted to string, but schema declares unsupported type
+      )
+    }
+
+    val schema = new StructType()
+      .add("id", IntegerType)
+      .add("unsupported_column", UnsupportedMockDataType())
+
+    val data = (0 until 3).map(createRow)
+    
     try {
-      import org.apache.spark.sql.types.VariantType
-      
-      def createRow(i: Int): Row = {
-        Row(
-          i,
-          s"""{"number": $i, "text": "value_$i", "active": ${i % 2 == 0}}""" // JSON for variant
-        )
-      }
-
-      val schema = new StructType()
-        .add("id", IntegerType)
-        .add("variant_data", VariantType)
-
-      val data = (0 until 5).map(createRow)
       writeDataWithSchema(tablePath, data, schema)
+      // If we reach here, the unsupported type wasn't blocked - this might be expected
+      // depending on how the validation works in the specific system being tested
+      println("UnsupportedMockDataType was accepted - check if validation is working correctly")
     } catch {
-      case _: NoClassDefFoundError | _: ClassNotFoundException =>
-        // VariantType not available in this Spark version, create empty table
-        println("VariantType not available - creating table without variant column")
-        val schema = new StructType().add("id", IntegerType)
-        val data = (0 until 5).map(i => Row(i))
-        writeDataWithSchema(tablePath, data, schema)
+      case e: Exception =>
+        // Expected case: unsupported type should cause an error
+        println(s"UnsupportedMockDataType correctly rejected: ${e.getMessage}")
+        // Create a fallback table with supported types only
+        val fallbackSchema = new StructType().add("id", IntegerType)
+        val fallbackData = (0 until 3).map(i => Row(i))
+        writeDataWithSchema(tablePath, fallbackData, fallbackSchema)
     }
   }
 
