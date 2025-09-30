@@ -18,7 +18,9 @@ package io.delta.kernel.spark.read;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.util.*;
 import org.apache.spark.sql.connector.read.streaming.Offset;
+import org.apache.spark.sql.sources.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
